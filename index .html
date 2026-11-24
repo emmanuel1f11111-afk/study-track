@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Study Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1d6f5b">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--tx:#1c1c1a;--mu:#6b6a64;--ac:#1d6f5b;--bd:#e3e1da;--bad:#b3402e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--card:#201f1d;--tx:#efede6;--mu:#9a988f;--ac:#4cc3a3;--bd:#33312d;--bad:#e5806f;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding-top:env(safe-area-inset-top,0px)}
+main{max-width:520px;margin:0 auto;padding:16px 16px 100px}
+h1{font-size:22px;margin:4px 0 2px}h2{font-size:16px;margin:0 0 10px}
+.sub{color:var(--mu);font-size:14px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:14px}
+.ringc{display:flex;align-items:center;gap:18px}
+.big{font-size:32px;font-weight:700}.mu{color:var(--mu);font-size:14px}
+input,select{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:10px;width:100%}
+.row{display:flex;gap:8px;margin-top:8px;align-items:center}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--ac);color:var(--bg);font-weight:600;cursor:pointer}
+button.s{background:var(--bg);color:var(--tx);border:1px solid var(--bd);font-weight:500}
+button.g{background:transparent;color:var(--mu);padding:8px 10px;font-weight:400}
+button.d{background:var(--bad);color:#fff}
+.q{display:flex;gap:6px;margin-top:8px}.q button{flex:1;padding:8px 0}
+.it{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--bd)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats div{background:var(--bg);border-radius:10px;padding:10px}.stats b{display:block;font-size:20px}
+.pb{height:8px;background:var(--bd);border-radius:6px;overflow:hidden;margin-top:4px}.pb i{display:block;height:100%}
+.ok{color:var(--ac)}.bad{color:var(--bad)}
+label{font-size:13px;color:var(--mu);display:block;margin-top:8px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:transparent;color:var(--mu);border-radius:0;padding:14px 0;font-weight:500}
+nav button.on{color:var(--ac);font-weight:700}
+#focus{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:85vh;gap:10px}#focus .huge{font-size:64px;font-weight:700;font-variant-numeric:tabular-nums}#focus .row{width:100%;max-width:320px}label.ck{display:flex;gap:8px;align-items:center;color:var(--tx);font-size:15px}label.ck input{width:auto}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%}
+</style>
+</head>
+<body>
+<main id="v"></main>
+<nav><button data-t="today">Today</button><button data-t="stats">Progress</button><button data-t="set">Settings</button></nav>
+<div id="toast"></div>
+<script>
+const K="study-tracker-v2",MAXM=240,PAL=["#1d6f5b","#c27a1a","#3b6fd1","#8a6bbf","#c4476b","#2f9aa8"];
+let S={target:9,cap:2,subjects:[{id:"s1",name:"Embedded Systems",c:PAL[0]},{id:"s2",name:"Mathematics",c:PAL[1]},{id:"s3",name:"Programming",c:PAL[2]},{id:"s4",name:"Other",c:PAL[3]}],sessions:[],timer:null},tab="today",ed=null,lastSub="s1",okStore=true;
+try{const r=localStorage.getItem(K)||localStorage.getItem("study-tracker-v1");if(r){const p=JSON.parse(r);if(p&&Array.isArray(p.sessions))S=Object.assign(S,p)}}catch(e){okStore=false}
+const $=i=>document.getElementById(i);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dk=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const fmt=m=>{m=Math.round(m);return Math.floor(m/60)+"h "+String(m%60).padStart(2,"0")+"m"};
+const clock=ms=>{const s=Math.floor(ms/1000);return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":")};
+const sb=x=>S.subjects.find(s=>s.id===x.sub)||{name:x.s||"Study",c:"#8a8a84"};
+function save(){try{localStorage.setItem(K,JSON.stringify(S));okStore=true}catch(e){okStore=false}}
+function ask(msg,fn,lbl){const o=document.createElement("div");o.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:9";o.innerHTML=`<div class="card" style="max-width:340px;width:100%;margin:0"><div style="margin-bottom:14px">${esc(msg)}</div><div class="row"><button class="s" style="flex:1" id="an">Cancel</button><button class="d" style="flex:1" id="ay">${esc(lbl||"OK")}</button></div></div>`;document.body.appendChild(o);o.querySelector("#an").onclick=()=>o.remove();o.querySelector("#ay").onclick=()=>{o.remove();fn()}}
+function toast(t){const e=$("toast");e.textContent=t;e.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.opacity=0,2200)}
+function calc(){
+  const t=dk(new Date()),sum={};S.sessions.forEach(s=>sum[s.d]=(sum[s.d]||0)+s.m);
+  const ks=Object.keys(sum).sort(),st=ks.length&&ks[0]<t?ks[0]:t,d=new Date(st+"T12:00:00");let carry=0;const days=[];
+  for(;;){const k=dk(d),rd=(S.rest||[]).includes(d.getDay()),req=rd?0:S.target*60+carry,lg=sum[k]||0;days.push({d:k,lg,req,carry:rd?0:carry,rd});if(k>=t)break;if(!rd)carry=Math.min(S.cap*60,Math.max(0,req-lg));d.setDate(d.getDate()+1)}
+  return{days,sum,today:days[days.length-1]};
+}
+function needBk(){if(!S.sessions.length)return false;const ref=S.lastExp||S.sessions.reduce((a,x)=>x.d<a?x.d:a,"9999");return (Date.now()-new Date(ref+"T12:00:00"))/864e5>=7}
+const mmss=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")};
+function tinfo(){const t=S.timer,e=Date.now()-t.start;if(!t.pomo)return{ms:e,st:e,ph:"",left:0};const w=(S.pw||25)*6e4,b=(S.pb||5)*6e4,cy=w+b,f=Math.floor(e/cy),r=e%cy;return{ms:e,st:f*w+Math.min(r,w),ph:r<w?"focus":"break",left:r<w?w-r:cy-r}}
+const phTxt=i=>i.ph?(i.ph==="focus"?"Focus · ":"Break · ")+mmss(i.left)+" left":"";
+let focusOn=false,lastPh="";
+function vFocus(){const i=tinfo();return `<div id="focus"><div class="mu">Studying ${esc(sb(S.timer).name)}</div><div class="huge" id="clk">${clock(i.ms)}</div>${S.timer.pomo?`<div class="big" id="ph">${phTxt(i)}</div><div class="mu">Only focus time is saved.</div>`:""}<div class="row"><button class="d" data-a="stop" style="flex:1">Stop and save</button></div><div class="row"><button class="g" data-a="unfocus" style="flex:1">Leave focus screen</button></div></div>`}
+function daysTo(ex){return Math.round((new Date(ex+"T12:00:00")-new Date(dk(new Date())+"T12:00:00"))/864e5)}
+function vCourses(t){
+  const by={};S.sessions.forEach(x=>{if(x.d===t.d)by[x.sub]=(by[x.sub]||0)+x.m});
+  const rows=S.subjects.filter(x=>(x.ex&&daysTo(x.ex)>=0)||x.g).map(x=>{
+    const lg=by[x.id]||0,dl=x.ex&&daysTo(x.ex)>=0?daysTo(x.ex):null;
+    const ex=dl===null?"":dl===0?"Exam today":dl===1?"1 day left":dl+" days left";
+    const gl=x.g?`<div class="pb"><i style="width:${Math.min(100,lg/x.g*100)}%;background:${x.c}"></i></div>`:"";
+    return `<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;gap:8px"><span><i class="dot" style="background:${x.c}"></i>${esc(x.name)}</span><span class="mu">${[ex,x.g?fmt(lg)+" / "+fmt(x.g):""].filter(Boolean).join(" · ")}</span></div>${gl}</div>`}).join("");
+  return rows?`<div class="card"><h2>Courses</h2>${rows}<div class="mu" style="margin-top:10px">Course goals count toward your daily total, not on top of it.</div></div>`:"";
+}
+function needIos(){const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);const inst=navigator.standalone===true||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);return ios&&!inst&&!S.hideIos}
+function opts(){return S.subjects.map(s=>`<option value="${s.id}"${s.id===lastSub?" selected":""}>${esc(s.name)}</option>`).join("")}
+function vToday(c){
+  const t=c.today,left=t.req-t.lg,pct=t.req?Math.min(1,t.lg/t.req):1,run=S.timer;
+  const list=S.sessions.map((s,i)=>({s,i})).filter(o=>o.s.d===t.d).reverse().map(o=>`<div class="it"><span><i class="dot" style="background:${sb(o.s).c}"></i>${esc(sb(o.s).name)} · ${fmt(o.s.m)}</span><span><button class="g" data-a="edit" data-i="${o.i}">Edit</button><button class="g" data-a="del" data-i="${o.i}">Remove</button></span></div>`).join("");
+  return `<h1>Today</h1><div class="sub">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}</div>
+<div class="card ringc"><svg viewBox="0 0 120 120" width="120" height="120"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--bd)" stroke-width="10"/><circle cx="60" cy="60" r="52" fill="none" stroke="var(--ac)" stroke-width="10" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="${326.7*(1-pct)}" transform="rotate(-90 60 60)"/></svg>
+<div><div class="big">${fmt(t.lg)}</div><div class="mu">${t.rd?"Rest day · no goal":"of "+fmt(t.req)+" goal"}</div><div class="mu" style="margin-top:6px">${t.rd?"Anything you study is a bonus":left>0?fmt(left)+" to go":"Goal reached ✓"}</div>${t.carry?`<div class="mu">Includes ${fmt(t.carry)} carried over</div>`:""}</div></div>
+${vCourses(t)}
+<div class="card"><h2>Study session</h2>
+${run?`<div class="mu">Studying ${esc(sb(run).name)}</div><div class="big" id="clk">${clock(Date.now()-run.start)}</div>${run.pomo?`<div class="mu" id="ph">${phTxt(tinfo())}</div>`:""}<div class="bad" id="tw" style="display:none;margin-top:6px;font-size:14px">Running over 3 hours. Still studying? If you forgot, stop and enter the real minutes.</div><div class="row"><button class="d" data-a="stop" style="flex:1">Stop and save</button><button class="s" data-a="focus">Focus screen</button></div>`
+:`<select id="sub">${opts()}</select><label class="ck"><input type="checkbox" id="pomo"${S.pomo?" checked":""}>Pomodoro: ${S.pw||25} min focus, ${S.pb||5} min break</label><div class="row"><button data-a="start" style="flex:1">Start timer</button></div>`}
+</div>
+<div class="card"><h2>Add time manually</h2>
+${run?"":""}<div class="row" style="margin-top:0"><input id="mm" type="number" inputmode="numeric" min="1" max="720" placeholder="Minutes"><button data-a="add">Add</button></div>
+<label>Date</label><input id="md" type="date" value="${t.d}" max="${t.d}"><div class="q"><button class="s" data-a="quick" data-m="30">30m</button><button class="s" data-a="quick" data-m="60">1h</button><button class="s" data-a="quick" data-m="90">1.5h</button><button class="s" data-a="quick" data-m="120">2h</button></div>
+<div class="mu" style="margin-top:8px">Uses the subject chosen above. Change the date to log a missed day.</div></div>
+${ed!==null&&S.sessions[ed]?(()=>{const e=S.sessions[ed];return `<div class="card"><h2>Edit session</h2><select id="esub">${S.subjects.map(x=>`<option value="${x.id}"${x.id===e.sub?" selected":""}>${esc(x.name)}</option>`).join("")}</select><label>Minutes</label><input id="emm" type="number" inputmode="numeric" min="1" max="720" value="${e.m}"><label>Date</label><input id="edt" type="date" value="${e.d}" max="${t.d}"><div class="row"><button data-a="esave" style="flex:1">Save</button><button class="s" data-a="ecancel" style="flex:1">Cancel</button></div></div>`})():""}
+${list?`<div class="card"><h2>Logged today</h2>${list}</div>`:""}
+${needBk()?`<div class="card"><h2>Back up your data</h2><div class="mu">Your last backup is over a week old, or you have not made one. Your records exist only on this phone.</div><div class="row"><button data-a="exp" style="flex:1">Export backup now</button></div></div>`:""}
+${needIos()?`<div class="card"><h2>Install this app</h2><div class="mu">On iPhone, Safari can erase data from websites you have not opened for a week. Tap Share, then Add to Home Screen, and open the app from there to keep your records safe.</div><div class="row"><button class="s" data-a="hideios" style="flex:1">Got it, hide this</button></div></div>`:""}
+${okStore?"":`<div class="card bad">⚠ This browser is not saving data. Use Settings → Export backup after each study day.</div>`}`;
+}
+function vStats(c){
+  const wk=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=dk(d);wk.push({k,l:d.toLocaleDateString(undefined,{weekday:"narrow"}),m:c.sum[k]||0})}
+  const max=Math.max(S.target*60,...wk.map(x=>x.m),1),tg=S.target*60;
+  const bars=wk.map((x,i)=>{const h=x.m/max*85,xx=14+i*40;return `<rect x="${xx}" y="${100-h}" width="26" height="${h}" rx="4" fill="${x.m>=tg?"var(--ac)":"var(--mu)"}" opacity=".85"/><text x="${xx+13}" y="115" text-anchor="middle" font-size="10" fill="var(--mu)">${x.l}</text>`}).join("");
+  const ty=100-tg/max*85,met=c.days.filter(d=>!d.rd||d.lg>=tg).map(d=>d.lg>=tg||d.rd);let cur=0,i=met.length-1,best=0,r=0;if(!met[i])i--;for(;i>=0&&met[i];i--)cur++;met.forEach(m=>{r=m?r+1:0;best=Math.max(best,r)});
+  const wt=wk.reduce((a,x)=>a+x.m,0),all=S.sessions.reduce((a,s)=>a+s.m,0),by={};
+  S.sessions.filter(s=>s.d>=wk[0].k).forEach(s=>{const b=sb(s);by[b.name]=by[b.name]||{m:0,c:b.c};by[b.name].m+=s.m});
+  const bl=Object.entries(by).sort((a,b)=>b[1].m-a[1].m).map(([n,o])=>`<div style="margin-top:10px"><div style="display:flex;justify-content:space-between"><span>${esc(n)}</span><span class="mu">${fmt(o.m)}</span></div><div class="pb"><i style="width:${o.m/wt*100}%;background:${o.c}"></i></div></div>`).join("");
+  const hist=c.days.slice().reverse().slice(0,30).map(d=>`<div class="it"><span>${d.d}</span><span class="${d.lg>=tg?"ok":"mu"}">${d.rd&&!d.lg?"Rest day":fmt(d.lg)+(d.rd?" (rest day)":" / "+fmt(d.req))}${d.lg>=tg?" ✓":""}</span></div>`).join("");
+  return `<h1>Progress</h1><div class="sub">Last 7 days</div>
+<div class="card"><svg viewBox="0 0 300 122" width="100%"><line x1="0" x2="300" y1="${ty}" y2="${ty}" stroke="var(--ac)" stroke-dasharray="4 4" opacity=".6"/>${bars}</svg><div class="mu">Dashed line is your ${S.target}h daily goal.</div></div>
+<div class="card"><div class="stats"><div><b>${cur}</b><span class="mu">Day streak</span></div><div><b>${best}</b><span class="mu">Best streak</span></div><div><b>${fmt(wt)}</b><span class="mu">This week</span></div><div><b>${fmt(all)}</b><span class="mu">All time</span></div></div></div>
+${bl?`<div class="card"><h2>By subject (7 days)</h2>${bl}</div>`:""}
+<div class="card"><h2>History</h2>${hist}</div>`;
+}
+function vSet(){
+  return `<h1>Settings</h1><div class="sub">Everything saves on this device.</div>
+<div class="card"><label style="margin-top:0">Daily target (hours)</label><input type="number" inputmode="decimal" step="0.5" min="1" max="16" value="${S.target}" data-k="target">
+<label>Max carryover per day (hours)</label><input type="number" inputmode="decimal" step="0.5" min="0" max="8" value="${S.cap}" data-k="cap">
+<div class="mu" style="margin-top:8px">Missed time carries to the next day, up to this cap, so one bad day never snowballs.</div></div>
+<div class="card"><h2>Pomodoro</h2><label style="margin-top:0">Focus minutes</label><input type="number" inputmode="numeric" min="5" max="90" value="${S.pw||25}" data-k="pw"><label>Break minutes</label><input type="number" inputmode="numeric" min="1" max="30" value="${S.pb||5}" data-k="pb"><div class="mu" style="margin-top:8px">When Pomodoro is ticked on the timer, break time is not counted as study time. Your phone vibrates when a phase changes, if the app is open.</div></div>
+<div class="card"><h2>Rest days</h2><div class="q">${["S","M","T","W","T","F","S"].map((n,i)=>`<button class="${(S.rest||[]).includes(i)?"":"s"}" data-a="rest" data-i="${i}">${n}</button>`).join("")}</div><div class="mu" style="margin-top:8px">Highlighted days have no goal and never break your streak.</div></div>
+<div class="card"><h2>Subjects</h2>${S.subjects.map((s,i)=>`<div class="it" style="flex-wrap:wrap"><span><i class="dot" style="background:${s.c}"></i>${esc(s.name)}</span><button class="g" data-a="delsub" data-i="${i}">Remove</button><div style="width:100%;display:flex;gap:8px;padding-bottom:6px"><div style="flex:1"><label style="margin-top:0">Exam date</label><input type="date" value="${s.ex||""}" data-sk="ex" data-i="${i}"></div><div style="flex:1"><label style="margin-top:0">Daily goal (hours)</label><input type="number" inputmode="decimal" step="0.5" min="0" max="16" placeholder="none" value="${s.g?s.g/60:""}" data-sk="g" data-i="${i}"></div></div></div>`).join("")}
+<div class="row"><input id="ns" placeholder="New subject" maxlength="30"><button data-a="addsub">Add</button></div></div>
+<div class="card"><h2>Backup</h2><div class="row" style="margin-top:0"><button data-a="exp" style="flex:1">Export</button><button class="s" data-a="imp" style="flex:1">Import</button></div><input id="file" type="file" accept=".json,application/json" style="display:none">
+<div class="mu" style="margin-top:8px">Export every week. It is the only copy if you clear browser data or change phone. Last backup: ${S.lastExp||"never"}.</div></div>
+<div class="card"><button class="s bad" data-a="reset" style="width:100%">Erase all data</button></div>`;
+}
+function render(){const f=focusOn&&S.timer;if(!S.timer)focusOn=false;document.querySelector("nav").style.display=f?"none":"";if(f){$("v").innerHTML=vFocus();return}$("v").innerHTML=(tab==="today"?vToday:tab==="stats"?vStats:vSet)(calc());document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab))}
+function add(m,id,d){const s=S.subjects.find(x=>x.id===id);S.sessions.push({d:d||dk(new Date()),sub:id,s:s?s.name:"Study",m});save();render();toast("Saved "+fmt(m))}
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-a],[data-t]");if(!b)return;
+  if(b.dataset.t){tab=b.dataset.t;render();scrollTo(0,0);return}
+  const a=b.dataset.a,sel=$("sub")?$("sub").value:lastSub;
+  if(a==="start"){const pm=$("pomo")?$("pomo").checked:false;S.pomo=pm;S.timer={sub:sel,start:Date.now(),pomo:pm};lastPh=pm?"focus":"";save();render()}
+  else if(a==="focus"){focusOn=true;render();scrollTo(0,0)}
+  else if(a==="unfocus"){focusOn=false;render()}
+  else if(a==="stop"){let m=Math.round(tinfo().st/60000);const id=S.timer.sub,d=dk(new Date(S.timer.start));
+    if(m>MAXM){const r=prompt("Timer ran for "+fmt(m)+". Enter the minutes you really studied (max "+m+"):",MAXM);if(r===null)return;const v=Math.round(parseFloat(r));if(!(v>=1&&v<=m))return toast("Enter a number from 1 to "+m);m=v}
+    S.timer=null;save();if(m<1){render();toast("Under 1 minute, not saved")}else add(m,id,d)}
+  else if(a==="add"){const v=parseFloat($("mm").value);if(!(v>=1&&v<=720))return toast("Enter 1 to 720 minutes");add(Math.round(v),sel,$("md").value||undefined)}
+  else if(a==="quick")add(+b.dataset.m,sel,$("md").value||undefined);
+  else if(a==="del"){const i=+b.dataset.i;ask("Remove this session?",()=>{S.sessions.splice(i,1);ed=null;save();render();toast("Session removed")},"Remove")}
+  else if(a==="rest"){const i=+b.dataset.i,r=S.rest||[];S.rest=r.includes(i)?r.filter(x=>x!==i):r.concat(i);save();render()}
+  else if(a==="edit"){ed=+b.dataset.i;render();scrollTo(0,0)}
+  else if(a==="ecancel"){ed=null;render()}
+  else if(a==="esave"){const v=Math.round(parseFloat($("emm").value)),dt=$("edt").value;if(!(v>=1&&v<=720)||!dt)return toast("Check minutes and date");const e=S.sessions[ed],n=S.subjects.find(x=>x.id===$("esub").value);e.m=v;e.d=dt;if(n){e.sub=n.id;e.s=n.name}ed=null;save();render();toast("Session updated")}
+  else if(a==="addsub"){const n=$("ns").value.trim();if(!n)return;if(S.subjects.some(s=>s.name.toLowerCase()===n.toLowerCase()))return toast("That subject already exists");S.subjects.push({id:"s"+Date.now(),name:n,c:PAL[S.subjects.length%PAL.length]});save();render()}
+  else if(a==="delsub"){if(S.subjects.length<2)return toast("Keep at least one subject");S.subjects.splice(+b.dataset.i,1);save();render()}
+  else if(a==="exp"){const l=document.createElement("a");l.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:"application/json"}));l.download="study-backup-"+dk(new Date())+".json";document.body.appendChild(l);l.click();l.remove();S.lastExp=dk(new Date());save();render();toast("Backup downloaded")}
+  else if(a==="hideios"){S.hideIos=true;save();render()}
+  else if(a==="imp")$("file").click();
+  else if(a==="reset"){ask("Erase ALL study data on this device? This cannot be undone.",()=>{S.sessions=[];S.timer=null;save();render();toast("All data erased")},"Erase")}
+});
+document.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.id==="sub")lastSub=t.value;
+  else if(t.dataset.k){const v=parseFloat(t.value);if(t.dataset.k==="target"&&v>=1&&v<=16)S.target=v;else if(t.dataset.k==="cap"&&v>=0&&v<=8)S.cap=v;else if(t.dataset.k==="pw"&&v>=5&&v<=90)S.pw=Math.round(v);else if(t.dataset.k==="pb"&&v>=1&&v<=30)S.pb=Math.round(v);else return toast("Value out of range");save();toast("Saved")}
+  else if(t.dataset.sk){const s=S.subjects[+t.dataset.i];if(!s)return;if(t.dataset.sk==="ex")s.ex=t.value||"";else{const v=parseFloat(t.value);if(t.value===""||v===0)delete s.g;else if(v>0&&v<=16)s.g=Math.round(v*60);else return toast("Enter 0 to 16 hours")}save();toast("Saved")}
+  else if(t.id==="file"&&t.files[0]){const r=new FileReader();r.onload=()=>{try{const p=JSON.parse(r.result);if(!p||!Array.isArray(p.sessions)||!Array.isArray(p.subjects))throw 0;ask("Replace current data with this backup?",()=>{S=Object.assign(S,p);save();render();toast("Backup restored")},"Replace")}catch(x){toast("Not a valid backup file")}};r.readAsText(t.files[0])}
+});
+setInterval(()=>{const e=$("clk");if(e&&S.timer){const ms=Date.now()-S.timer.start;const i=tinfo();e.textContent=clock(i.ms);const p=$("ph");if(p&&i.ph){p.textContent=phTxt(i);if(i.ph!==lastPh){lastPh=i.ph;try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(x){}}}const w=$("tw");if(w)w.style.display=ms>1.08e7?"block":"none"}},1000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&tab!=="set")render()});
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+if("serviceWorker" in navigator)addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+render();
+</script>
+</body>
+</html>
